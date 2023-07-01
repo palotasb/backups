@@ -110,9 +110,9 @@ class Borg:
 
             excludes = raw_src_config.get("exclude", [])
             if isinstance(excludes, str):
-                excludes = [Path(excludes).expanduser()]
-            elif isinstance(excludes, list):
-                excludes = [Path(item).expanduser() for item in excludes]
+                excludes = [Path(excludes).expanduser() if excludes.startswith("~") else excludes]
+            if isinstance(excludes, list):
+                excludes = [str(Path(item).expanduser()) if item.startswith("~") else item for item in excludes]
             else:
                 assert isinstance(
                     excludes, (str, list)
@@ -141,6 +141,7 @@ def action_backup(borg: Borg, only: list[str], borg_args: list[str]):
 
         borg.run_borg(
             "create",
+            "--exclude-caches",
             *[["--exclude", item] for item in backup_source.excludes],
             "--stats --verbose --progress",
             *borg_args,
