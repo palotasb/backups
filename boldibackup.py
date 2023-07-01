@@ -139,16 +139,21 @@ def action_backup(borg: Borg, only: list[str], borg_args: list[str]):
         if only != [] and name not in only:
             continue
 
-        borg.run_borg(
-            "create",
-            "--exclude-caches",
-            *[["--exclude", item] for item in backup_source.excludes],
-            "--stats --verbose --progress",
-            *borg_args,
-            "--",
-            [f"::{backup_source.archive_name}-{{now}}"],
-            backup_source.sources,
-        )
+        backup_sources = backup_source.sources
+        backup_sources = [item for item in backup_sources if item.exists()]
+        if backup_sources:
+            borg.run_borg(
+                "create",
+                "--exclude-caches",
+                ["--exclude", "*/.Spotlight-*"],
+                ["--exclude", "*/.Trashes"],
+                *[["--exclude", item] for item in backup_source.excludes],
+                "--stats --verbose --progress",
+                *borg_args,
+                "--",
+                [f"::{backup_source.archive_name}-{{now}}"],
+                backup_sources,
+            )
 
 
 def main(ctx: Ctx):
