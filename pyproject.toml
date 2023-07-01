@@ -1,0 +1,16 @@
+[project]
+name = "boldibackup"
+version = "0.0.1"
+dependencies = [
+    "tomli",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black",
+    "isort",
+    "mypy",
+]
+
+[tool.setuptools.packages]
+find = {}
