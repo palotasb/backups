@@ -68,11 +68,14 @@ class BackupSource:
 
 
 valid_archive_name_re = re.compile(r"^[\w\d_-]{1,100}$")
+time_format = r"{now:%Y-%m-%d_%H-%M-%S}"
 
 
 @dataclass
 class Borg:
     ctx: Ctx
+    repo: Path
+    mount: Path
     env: dict[str, str]
     backup_sources: dict[str, BackupSource]
 
@@ -87,6 +90,9 @@ class Borg:
     def from_config_file(ctx: Ctx, config_file: Path) -> "Borg":
         with config_file.open("rb") as fp:
             raw_config = tomli.load(fp)
+
+        repo = Path(raw_config["repo"])
+        mount = Path(raw_config["mount"])
 
         backup_sources = {}
         for raw_src_name, raw_src_config in raw_config.get("backup", {}).items():
@@ -130,7 +136,16 @@ class Borg:
                 archive_name, source_dirs, excludes
             )
 
-        return Borg(ctx, raw_config.get("env", {}), backup_sources)
+        env = raw_config.get("env", {})
+        env.setdefault("BORG_REPO", str(repo))
+
+        return Borg(
+            ctx=ctx,
+            repo=repo,
+            mount=mount,
+            env=raw_config.get("env", {}),
+            backup_sources=backup_sources,
+        )
 
 
 def action_help(borg: Borg, parser: argparse.ArgumentParser):
@@ -165,10 +180,18 @@ def action_backup(borg: Borg, only: list[str], borg_args: list[str]):
                 "--stats --verbose --progress",
                 *borg_args,
                 "--",
-                [f"::{backup_source.archive_name}-{{now}}"],
+                [f"::{backup_source.archive_name}_{time_format}"],
                 backup_sources,
                 cwd=common_prefix,
             )
+
+
+def action_mount(borg: Borg):
+    borg.run_borg("mount ::", [borg.mount])
+
+
+def action_umount(borg: Borg):
+    borg.run_borg("umount", [borg.mount])
 
 
 def main(ctx: Ctx):
@@ -201,6 +224,12 @@ def main(ctx: Ctx):
     subparser_backup.add_argument(
         "borg_args", nargs="*", help="Additional `borg create` arguments"
     )
+
+    subparser_mount = subparsers.add_parser("mount", help="Run `borg mount`")
+    subparser_mount.set_defaults(action=action_mount)
+
+    subparser_umount = subparsers.add_parser("umount", help="Run `borg umount`")
+    subparser_umount.set_defaults(action=action_umount)
 
     parsed_args = vars(parser.parse_args(ctx.argv[1:]))
     config_file = Path(parsed_args.pop("config")).expanduser()
