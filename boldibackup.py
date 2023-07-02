@@ -5,6 +5,7 @@ xxx
 import argparse
 import functools
 import os
+import os.path
 import re
 import shlex
 import subprocess
@@ -110,15 +111,24 @@ class Borg:
 
             excludes = raw_src_config.get("exclude", [])
             if isinstance(excludes, str):
-                excludes = [Path(excludes).expanduser() if excludes.startswith("~") else excludes]
+                excludes = [
+                    Path(excludes).expanduser()
+                    if excludes.startswith("~")
+                    else excludes
+                ]
             if isinstance(excludes, list):
-                excludes = [str(Path(item).expanduser()) if item.startswith("~") else item for item in excludes]
+                excludes = [
+                    str(Path(item).expanduser()) if item.startswith("~") else item
+                    for item in excludes
+                ]
             else:
                 assert isinstance(
                     excludes, (str, list)
                 ), f"backup.{raw_src_name}.excludes must be a string or list of strings"
 
-            backup_sources[archive_name] = BackupSource(archive_name, source_dirs, excludes)
+            backup_sources[archive_name] = BackupSource(
+                archive_name, source_dirs, excludes
+            )
 
         return Borg(ctx, raw_config.get("env", {}), backup_sources)
 
@@ -133,14 +143,18 @@ def action_borg(borg: Borg, command: list[str]):
 
 def action_backup(borg: Borg, only: list[str], borg_args: list[str]):
     for item in only:
-        assert item in borg.backup_sources, f"{item} is not a valid backup source (those would be: {list(borg.backup_sources.keys())})"
+        assert (
+            item in borg.backup_sources
+        ), f"{item} is not a valid backup source (those would be: {list(borg.backup_sources.keys())})"
 
     for name, backup_source in borg.backup_sources.items():
         if only != [] and name not in only:
             continue
 
         backup_sources = backup_source.sources
+        common_prefix = Path(os.path.commonpath(backup_sources))
         backup_sources = [item for item in backup_sources if item.exists()]
+        backup_sources = [item.relative_to(common_prefix) for item in backup_sources]
         if backup_sources:
             borg.run_borg(
                 "create",
@@ -153,6 +167,7 @@ def action_backup(borg: Borg, only: list[str], borg_args: list[str]):
                 "--",
                 [f"::{backup_source.archive_name}-{{now}}"],
                 backup_sources,
+                cwd=common_prefix,
             )
 
 
@@ -176,8 +191,16 @@ def main(ctx: Ctx):
 
     subparser_backup = subparsers.add_parser("backup", help="Perform a backup")
     subparser_backup.set_defaults(action=action_backup)
-    subparser_backup.add_argument("--only", "-i", default=[], action="append", help="Only back up the listed backup sources")
-    subparser_backup.add_argument("borg_args", nargs="*", help="Additional `borg create` arguments")
+    subparser_backup.add_argument(
+        "--only",
+        "-i",
+        default=[],
+        action="append",
+        help="Only back up the listed backup sources",
+    )
+    subparser_backup.add_argument(
+        "borg_args", nargs="*", help="Additional `borg create` arguments"
+    )
 
     parsed_args = vars(parser.parse_args(ctx.argv[1:]))
     config_file = Path(parsed_args.pop("config")).expanduser()
